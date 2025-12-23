@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <base target="_top">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <?!= include('Stylesheet'); ?>
+  <style>
+    body {
+      padding-bottom: 60px;
+      background-color: #f0f2f5;
+    }
+
+    .card {
+      border: none;
+    }
+
+    .navbar-brand-text {
+      line-height: 1.2;
+    }
+
+    .navbar-logo {
+      width: 60px;
+      height: 60px;
+      object-fit: contain;
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.2));
+    }
+
+    @media (max-width: 768px) {
+      .navbar-brand-text div {
+        font-size: 0.8rem !important;
+      }
+
+      .navbar-brand-text div:first-child {
+        font-size: 0.95rem !important;
+      }
+
+      .navbar-logo {
+        width: 50px;
+        height: 50px;
+      }
+    }
+
+    .swal2-popup {
+      font-family: 'Sarabun', sans-serif !important;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="login-section" class="container d-flex justify-content-center align-items-center vh-100">
+    <div class="card shadow-lg p-4" style="width: 450px; border-radius: 20px;">
+      <div class="text-center mb-4">
+        <img src="https://cdn.jsdelivr.net/gh/BabuEiEi/images/สพฐ.02 ไม่มีขอบ.png" alt="Logo" class="mb-3"
+          style="width: 130px; height: auto; object-fit: contain; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));">
+        <h5 class="fw-bold text-primary" style="line-height: 1.5;">ระบบนิเทศ ติดตาม และประเมินผล PISA<br>ปีงบประมาณ 2569
+          ระดับสถานศึกษา</h5>
+        <p class="text-muted mt-2 mb-0 small">งานประเมินระดับนานาชาติ (PISA)<br>กลุ่มนิเทศ ติดตาม
+          และประเมินผลการจัดการศึกษา<br>สพม.พิษณุโลก อุตรดิตถ์</p>
+      </div>
+      <form onsubmit="handleLogin(event)">
+        <div class="form-floating mb-3">
+          <input type="text" class="form-control" id="username" placeholder="ชื่อผู้ใช้งาน" required>
+          <label for="username"><i class="bi bi-person-fill me-2"></i>ชื่อผู้ใช้งาน</label>
+        </div>
+        <div class="form-floating mb-3">
+          <input type="password" class="form-control" id="password" placeholder="รหัสผ่าน" required>
+          <label for="password"><i class="bi bi-lock-fill me-2"></i>รหัสผ่าน</label>
+        </div>
+        <button type="submit" id="btn-login" class="btn btn-primary w-100 py-2 fw-bold shadow-sm"
+          style="border-radius: 10px;"><i class="bi bi-box-arrow-in-right me-2"></i>เข้าสู่ระบบ</button>
+        <div id="login-error" class="alert alert-danger mt-3 text-center d-none shadow-sm" role="alert"></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="dashboard-section" class="d-none">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm py-2">
+      <div class="container-fluid">
+        <div class="d-flex align-items-center me-auto">
+          <img src="https://cdn.jsdelivr.net/gh/BabuEiEi/images/สพฐ.02 ไม่มีขอบ.png" alt="Logo"
+            class="navbar-logo me-3">
+          <div class="navbar-brand-text text-white">
+            <div class="fw-bold" style="font-size: 1.1rem; line-height: 1.6;">ระบบนิเทศ ติดตาม และประเมินผล PISA
+              ปีงบประมาณ 2569 ระดับสถานศึกษา</div>
+            <div style="font-size: 0.85rem; opacity: 0.9; line-height: 1.6;">งานประเมินระดับนานาชาติ (PISA) กลุ่มนิเทศ
+              ติดตาม และประเมินผลการจัดการศึกษา</div>
+            <div style="font-size: 0.85rem; opacity: 0.9;">สำนักงานเขตพื้นที่การศึกษามัธยมศึกษาพิษณุโลก อุตรดิตถ์</div>
+          </div>
+        </div>
+        <div class="d-flex text-white align-items-center ms-3">
+          <span id="user-display-name" class="me-3 d-none d-md-inline border-end pe-3">User Name</span>
+          <button class="btn btn-outline-light btn-sm text-nowrap" onclick="logout()"><i
+              class="bi bi-power me-1"></i>ออกจากระบบ</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="container mt-4">
+      <div id="view-school" class="role-view d-none">
+        <h4 class="mb-3 border-start border-4 border-primary ps-2 text-primary">ภาระงานที่ต้องส่ง</h4>
+        <div id="school-task-list" class="row g-3"></div>
+      </div>
+
+      <div id="view-supervisor" class="role-view d-none">
+        <div id="supervisor-school-list-area">
+          <h4 class="mb-3 border-start border-4 border-success ps-2 text-success">รายชื่อโรงเรียนในความดูแล</h4>
+          <div id="supervisor-school-list" class="row g-3"></div>
+        </div>
+        <div id="supervisor-grading-area" class="d-none">
+          <div class="mb-4">
+            <h4 class="fw-bold border-start border-4 border-success ps-2 text-success">ตรวจติดตามงาน</h4>
+            <div
+              class="d-flex justify-content-between align-items-center mt-3 p-3 bg-white rounded shadow-sm border-start border-4 border-success">
+              <div><small class="text-muted">โรงเรียน:</small>
+                <h5 class="fw-bold text-success mb-0" id="grading-school-name">...</h5>
+              </div>
+              <button class="btn btn-secondary btn-sm px-3 shadow-sm" onclick="closeGrading()"><i
+                  class="bi bi-x-lg me-1"></i>ปิดหน้าต่าง</button>
+            </div>
+          </div>
+          <div class="card shadow-sm border-0">
+            <div class="card-header bg-white fw-bold text-success"><i class="bi bi-list-task me-2"></i>รายการภาระงาน
+            </div>
+            <div class="card-body p-0">
+              <div id="grading-task-list" class="list-group list-group-flush"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="view-admin" class="role-view d-none">
+        <div
+          class="d-flex justify-content-between align-items-center mb-4 p-3 bg-white rounded shadow-sm border-start border-4 border-danger">
+          <h4 class="mb-0 text-danger"><i class="bi bi-speedometer2 me-2"></i>Dashboard ผู้ดูแลระบบ</h4>
+          <div>
+            <button class="btn btn-outline-success me-2 shadow-sm" onclick="exportToCSV()"><i
+                class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV</button>
+            <button class="btn btn-outline-dark me-2 shadow-sm" onclick="exportToPDF_Script()"><i
+                class="bi bi-file-earmark-pdf-fill me-1"></i> Download PDF</button>
+            <button class="btn btn-danger shadow-sm" onclick="openCreateTaskModal()"><i class="bi bi-plus-lg me-1"></i>
+              เพิ่มภาระงานใหม่</button>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+          <div class="col-md-4">
+            <div class="card text-white shadow-sm border-0"
+              style="background: linear-gradient(45deg, #0d6efd, #0a58ca);">
+              <div class="card-body text-center p-4"><i class="bi bi-building fs-1 mb-2 text-white-50"></i>
+                <h6 class="card-title mb-0">จำนวนโรงเรียน</h6>
+                <h2 class="display-6 fw-bold my-2" id="stat-total-schools">0</h2><small
+                  class="text-white-50">แห่ง</small>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card text-white shadow-sm border-0"
+              style="background: linear-gradient(45deg, #198754, #146c43);">
+              <div class="card-body text-center p-4"><i class="bi bi-list-check fs-1 mb-2 text-white-50"></i>
+                <h6 class="card-title mb-0">ภาระงานที่เปิดรับ (Active)</h6>
+                <h2 class="display-6 fw-bold my-2" id="stat-active-tasks">0</h2><small class="text-white-50">งาน</small>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card text-dark shadow-sm border-0"
+              style="background: linear-gradient(45deg, #ffc107, #ffca2c);">
+              <div class="card-body text-center p-4"><i class="bi bi-trophy-fill fs-1 mb-2 text-black-50"></i>
+                <h6 class="card-title mb-0">ส่งงานครบ 100%</h6>
+                <h2 class="display-6 fw-bold my-2" id="stat-complete-schools">0</h2><small
+                  class="text-black-50">แห่ง</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row mb-4">
+          <div class="col-md-6 mx-auto">
+            <div class="card shadow-sm border-0">
+              <div class="card-body">
+                <h6 class="card-title text-center text-muted fw-bold mb-3">ภาพรวมการส่งงานทั้งเขตพื้นที่</h6>
+                <div style="position: relative; height: 250px;">
+                  <canvas id="submissionChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card shadow-sm mb-4 border-0">
+          <div class="card-header bg-white text-dark d-flex justify-content-between align-items-center py-3"><span
+              class="fw-bold"><i
+                class="bi bi-bar-chart-fill me-2 text-primary"></i>ความก้าวหน้าการส่งงานรายโรงเรียน</span></div>
+          <div class="d-flex justify-content-between align-items-center p-3 bg-light border-bottom flex-wrap gap-2">
+            <div class="d-flex align-items-center bg-white p-2 rounded shadow-sm">
+              <span class="me-2 text-muted small"><i class="bi bi-list-ol me-1"></i>แสดง</span>
+              <select id="rowsPerPage" class="form-select form-select-sm border-0 bg-light"
+                style="width: 70px; cursor: pointer;" onchange="changeRowsPerPage()">
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="1000">ทั้งหมด</option>
+              </select>
+            </div>
+            <div class="d-flex gap-2">
+              <div class="input-group input-group-sm shadow-sm">
+                <span class="input-group-text bg-white border-end-0"><i class="bi bi-funnel-fill text-muted"></i></span>
+                <select id="clusterFilter" class="form-select border-start-0" style="max-width: 180px; cursor: pointer;"
+                  onchange="handleFilter()">
+                  <option value="">🏠 ทุกกลุ่มโรงเรียน</option>
+                </select>
+              </div>
+              <div class="input-group input-group-sm shadow-sm" style="width: 220px;"><span
+                  class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span><input
+                  type="text" id="searchInput" class="form-control border-start-0" placeholder="ค้นหาโรงเรียน..."
+                  onkeyup="handleFilter()"></div>
+            </div>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="bg-light">
+                  <tr class="text-muted small text-uppercase">
+                    <th style="width: 5%;" class="text-center">#</th>
+                    <th style="width: 30%;">โรงเรียน</th>
+                    <th class="text-center" style="width: 15%;">กลุ่ม</th>
+                    <th class="text-center" style="width: 15%;">สถานะการส่ง</th>
+                    <th style="width: 25%;">ความก้าวหน้า</th>
+                    <th class="text-center" style="width: 10%;">ดำเนินการ</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-progress-table" class="bg-white"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card-footer bg-white border-top py-3">
+            <div class="d-flex justify-content-between align-items-center"><small class="text-muted" id="page-info">แสดง
+                0-0 จาก 0 รายการ</small>
+              <nav>
+                <ul class="pagination pagination-sm mb-0 shadow-sm" id="pagination-controls"></ul>
+              </nav>
+            </div>
+          </div>
+        </div>
+        <div class="card shadow-sm border-0 no-print">
+          <div class="card-header bg-white text-danger fw-bold py-3"><i
+              class="bi bi-gear-fill me-2"></i>จัดการรายการภาระงาน</div>
+          <div class="card-body p-0">
+            <div id="admin-task-list" class="list-group list-group-flush"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="fixed-bottom bg-white border-top py-2 text-center shadow-sm" style="z-index: 1020;"><small
+      class="text-muted">© 2025 Copyright | พัฒนาโดย <strong>นายภัทรพล แก้วเสนา</strong> ศึกษานิเทศก์ สพม.พิษณุโลก
+      อุตรดิตถ์</small></footer>
+
+  <div class="modal fade" id="uploadModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title"><i class="bi bi-cloud-upload-fill me-2"></i>ส่งงาน/รายงาน</h5><button type="button"
+            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <form id="uploadForm">
+            <input type="hidden" id="modal-task-id"><input type="hidden" id="modal-task-type">
+            <div class="mb-4 text-center">
+              <h6 class="text-muted mb-1">หัวข้อภาระงาน</h6>
+              <h5 class="fw-bold text-primary" id="modal-task-name">...</h5>
+            </div>
+            <div id="input-section-file" class="bg-light p-3 rounded border border-dashed text-center"><i
+                class="bi bi-file-earmark-arrow-up text-primary display-4"></i>
+              <div class="mt-3"><label for="fileInput" class="form-label fw-bold">เลือกไฟล์เอกสาร/รูปภาพ</label><input
+                  type="file" class="form-control" id="fileInput">
+                <div class="form-text text-muted mt-2">รองรับไฟล์ PDF, JPG, PNG (ขนาดไม่เกิน 10MB)</div>
+              </div>
+            </div>
+            <div id="input-section-link" class="d-none bg-light p-3 rounded border border-dashed text-center"><i
+                class="bi bi-link-45deg text-primary display-4"></i>
+              <div class="mt-3"><label for="linkInput" class="form-label fw-bold">วางลิงก์ (URL)</label><input
+                  type="url" class="form-control" id="linkInput" placeholder="https://drive.google.com/...">
+                <div class="form-text text-muted mt-2">เช่น ลิงก์ Google Drive, Google Docs หรือเว็บไซต์</div>
+              </div>
+            </div>
+          </form>
+          <div id="upload-progress" class="d-none text-center mt-4">
+            <div class="spinner-border text-primary mb-2" role="status"></div>
+            <p class="text-muted mb-0">กำลังบันทึกข้อมูล กรุณารอสักครู่...</p>
+          </div>
+        </div>
+        <div class="modal-footer bg-light"><button type="button" class="btn btn-outline-secondary"
+            data-bs-dismiss="modal">ยกเลิก</button><button type="button" class="btn btn-primary px-4 shadow-sm"
+            onclick="submitFile()"><i class="bi bi-send-fill me-2"></i>ยืนยันการส่ง</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="createTaskModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title"><i class="bi bi-plus-circle-fill me-2"></i>สร้างภาระงานใหม่</h5><button type="button"
+            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <form id="createTaskForm">
+            <div class="form-floating mb-3"><input type="text" class="form-control" id="new-task-name"
+                placeholder="ชื่อภาระงาน" required><label for="new-task-name">ชื่อภาระงาน</label></div>
+            <div class="row g-2 mb-3">
+              <div class="col-md-6">
+                <div class="form-floating"><select class="form-select" id="new-task-type">
+                    <option value="FILE">📁 ส่งไฟล์ (File)</option>
+                    <option value="LINK">🔗 ส่งลิงก์ (Link)</option>
+                  </select><label for="new-task-type">รูปแบบการส่ง</label></div>
+              </div>
+              <div class="col-md-6">
+                <div class="form-floating"><input type="number" class="form-control" id="new-fiscal-year"
+                    value="2569"><label for="new-fiscal-year">ปีงบประมาณ</label></div>
+              </div>
+            </div>
+            <div class="form-floating mb-3"><textarea class="form-control" id="new-task-desc" placeholder="คำชี้แจง"
+                style="height: 100px"></textarea><label for="new-task-desc">คำชี้แจง/รายละเอียด</label></div>
+            <div class="row g-2 mb-3 bg-light p-3 rounded border">
+              <p class="mb-2 fw-bold text-muted small"><i class="bi bi-calendar-range me-1"></i>ช่วงเวลาเปิดรับ</p>
+              <div class="col-6"><label class="form-label small text-success">วันเปิดระบบ</label><input type="date"
+                  class="form-control" id="new-open-date" required></div>
+              <div class="col-6"><label class="form-label small text-danger">วันปิดระบบ (Deadline)</label><input
+                  type="date" class="form-control" id="new-close-date" required></div>
+            </div>
+            <div class="form-floating"><input type="text" class="form-control" id="new-task-round" value="1/2569"><label
+                for="new-task-round">รอบที่/ครั้งที่</label></div>
+          </form>
+        </div>
+        <div class="modal-footer bg-light"><button type="button" class="btn btn-outline-secondary"
+            data-bs-dismiss="modal">ยกเลิก</button><button type="button" class="btn btn-danger px-4 shadow-sm"
+            onclick="submitNewTask()"><i class="bi bi-save-fill me-2"></i>บันทึกข้อมูล</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="editTaskModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-warning text-dark">
+          <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>แก้ไขภาระงาน</h5><button type="button"
+            class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <form id="editTaskForm">
+            <input type="hidden" id="edit-task-id">
+            <div class="mb-3">
+              <label class="form-label small text-muted">รหัสงาน</label>
+              <input type="text" class="form-control bg-light" id="display-task-id" disabled>
+            </div>
+
+            <div class="form-floating mb-3"><input type="text" class="form-control" id="edit-task-name"
+                required><label>ชื่อภาระงาน</label></div>
+
+            <div class="row g-2 mb-3">
+              <div class="col-md-6">
+                <div class="form-floating"><select class="form-select" id="edit-task-type">
+                    <option value="FILE">📁 ส่งไฟล์ (File)</option>
+                    <option value="LINK">🔗 ส่งลิงก์ (Link)</option>
+                  </select><label>รูปแบบการส่ง</label></div>
+              </div>
+              <div class="col-md-6">
+                <div class="form-floating"><input type="number" class="form-control"
+                    id="edit-fiscal-year"><label>ปีงบประมาณ</label></div>
+              </div>
+            </div>
+
+            <div class="form-floating mb-3"><textarea class="form-control" id="edit-task-desc"
+                style="height: 100px"></textarea><label>คำชี้แจง/รายละเอียด</label></div>
+
+            <div class="row g-2 mb-3 bg-light p-3 rounded border">
+              <p class="mb-2 fw-bold text-muted small"><i class="bi bi-calendar-range me-1"></i>ช่วงเวลาเปิดรับ</p>
+              <div class="col-6"><label class="form-label small text-success">วันเปิดระบบ</label><input type="date"
+                  class="form-control" id="edit-open-date" required></div>
+              <div class="col-6"><label class="form-label small text-danger">วันปิดระบบ (Deadline)</label><input
+                  type="date" class="form-control" id="edit-close-date" required></div>
+            </div>
+
+            <div class="form-floating"><input type="text" class="form-control"
+                id="edit-task-round"><label>รอบที่/ครั้งที่</label></div>
+          </form>
+        </div>
+        <div class="modal-footer bg-light d-flex justify-content-between">
+          <button type="button" class="btn btn-outline-danger" onclick="confirmDeleteTask()">
+            <i class="bi bi-trash-fill me-2"></i>ลบงานนี้
+          </button>
+
+          <div>
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+            <button type="button" class="btn btn-warning px-4 shadow-sm" onclick="submitEditTask()">
+              <i class="bi bi-save-fill me-2"></i>บันทึกการแก้ไข
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="adminViewSchoolModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="adminViewSchoolTitle"><i class="bi bi-building me-2"></i>รายการงานของโรงเรียน</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body bg-light p-0"><input type="hidden" id="admin-current-view-school-id">
+          <div id="admin-school-work-list" class="list-group list-group-flush"></div>
+        </div>
+        <div class="modal-footer bg-white"><button type="button" class="btn btn-secondary"
+            data-bs-dismiss="modal">ปิดหน้าต่าง</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="evalModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="bi bi-clipboard-check-fill me-2"></i>ประเมินผลการนิเทศ/ติดตาม</h5><button
+            type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <form id="evalForm">
+            <input type="hidden" id="eval-sub-id">
+            <div class="mb-4 text-center">
+              <h6 class="text-muted mb-2">สรุปผลการประเมิน</h6>
+              <div class="btn-group w-100 shadow-sm" role="group">
+                <input type="radio" class="btn-check" name="evalResultOptions" id="resPass" value="PASS" checked><label
+                  class="btn btn-outline-success py-2" for="resPass"><i class="bi bi-check-circle-fill me-1"></i>ผ่าน
+                  (Pass)</label>
+                <input type="radio" class="btn-check" name="evalResultOptions" id="resRevise" value="REVISE"><label
+                  class="btn btn-outline-warning text-dark py-2" for="resRevise"><i
+                    class="bi bi-exclamation-circle-fill me-1"></i>แก้ไข (Revise)</label>
+                <input type="radio" class="btn-check" name="evalResultOptions" id="resFail" value="FAIL"><label
+                  class="btn btn-outline-danger py-2" for="resFail"><i class="bi bi-x-circle-fill me-1"></i>ไม่ผ่าน
+                  (Fail)</label>
+              </div>
+            </div>
+            <div class="form-floating mb-3">
+              <select class="form-select" id="eval-level">
+                <option value="ดีมาก" selected>⭐️⭐️⭐️⭐️ ดีมาก (Excellent)</option>
+                <option value="ดี">⭐️⭐️⭐️ ดี (Good)</option>
+                <option value="พอใช้">⭐️⭐️ พอใช้ (Fair)</option>
+                <option value="ปรับปรุง">⭐️ ปรับปรุง (Needs Improvement)</option>
+              </select>
+              <label for="eval-level">ระดับคุณภาพ (Quality Level)</label>
+            </div>
+            <div class="form-floating"><textarea class="form-control" id="eval-feedback" placeholder="ข้อเสนอแนะ"
+                style="height: 120px"></textarea><label for="eval-feedback">ข้อเสนอแนะ/สิ่งที่ควรพัฒนา
+                (Feedback)</label></div>
+          </form>
+        </div>
+        <div class="modal-footer bg-light"><button type="button" class="btn btn-outline-secondary"
+            data-bs-dismiss="modal">ยกเลิก</button><button type="button" class="btn btn-success px-4 shadow-sm"
+            onclick="submitEvaluation()"><i class="bi bi-check-lg me-2"></i>บันทึกผลการประเมิน</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="feedbackModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-info text-white">
+          <h5 class="modal-title"><i class="bi bi-info-circle-fill me-2"></i>ผลการนิเทศ/ติดตาม</h5><button type="button"
+            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <div class="text-center mb-4 p-3 bg-light rounded border border-info border-opacity-25">
+            <h6 class="text-muted text-uppercase ls-1 mb-2" style="font-size: 0.85rem;">สรุปผล (Result)</h6>
+            <h2 id="fb-result-badge" class="fw-bold mb-2 display-5"></h2>
+            <div id="fb-level-box"
+              class="badge bg-white text-primary border border-primary fs-6 px-3 py-2 rounded-pill shadow-sm"></div>
+          </div>
+          <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white fw-bold text-secondary"><i
+                class="bi bi-chat-quote-fill me-2 text-info"></i>ข้อเสนอแนะจากศึกษานิเทศก์</div>
+            <div class="card-body bg-light">
+              <p id="fb-comment" class="mb-0 text-dark fst-italic" style="white-space: pre-wrap; font-size: 1.05rem;">-
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer bg-light"><button type="button" class="btn btn-secondary px-4"
+            data-bs-dismiss="modal">ปิดหน้าต่าง</button></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <?!= include('JavaScript'); ?>
+
+  <div id="pdf-report-template"
+    style="position: fixed; left: -10000px; top: 0; width: 900px; background: white; padding: 40px; font-family: 'Sarabun', sans-serif; color: black;">
+
+    <div
+      style="display: flex; align-items: center; border-bottom: 3px solid #000; padding-bottom: 15px; margin-bottom: 20px;">
+      <img src="https://cdn.jsdelivr.net/gh/BabuEiEi/images/สพฐ.02 ไม่มีขอบ.png"
+        style="width: 80px; height: auto; margin-right: 20px;">
+      <div style="flex-grow: 1;">
+        <h3 style="margin: 0; font-weight: bold; font-size: 24px;">รายงานสรุปผลการขับเคลื่อน PISA ประจำปีการศึกษา 2569
+        </h3>
+        <p style="margin: 5px 0 0 0; font-size: 16px;">สำนักงานเขตพื้นที่การศึกษามัธยมศึกษาพิษณุโลก อุตรดิตถ์</p>
+        <p style="margin: 5px 0 0 0; font-size: 14px; color: #555;">
+          ข้อมูล ณ วันที่: <span id="report-date-print">...</span> | ออกรายงานโดย: <span
+            id="report-user-print">...</span>
+        </p>
+      </div>
+    </div>
+
+    <div id="report-summary-section"
+      style="display: flex; justify-content: space-between; margin-bottom: 20px; background-color: #f8f9fa; padding: 15px; border: 1px solid #ddd; border-radius: 5px;">
+      <div style="text-align: center;"><strong>จำนวนโรงเรียนทั้งหมด</strong><br><span id="rep-total-school"
+          style="font-size: 20px;">0</span> แห่ง</div>
+      <div style="text-align: center;"><strong>ภาระงานที่เปิดรับ</strong><br><span id="rep-total-task"
+          style="font-size: 20px;">0</span> งาน</div>
+      <div style="text-align: center;"><strong>ส่งครบ 100%</strong><br><span id="rep-complete"
+          style="font-size: 20px;">0</span> แห่ง</div>
+    </div>
+
+    <table class="table table-bordered border-dark" style="width: 100%; font-size: 14px;">
+      <thead style="background-color: #eaeaea; text-align: center; display: table-header-group;">
+        <tr>
+          <th style="width: 5%;">#</th>
+          <th style="width: 35%;">ชื่อโรงเรียน</th>
+          <th style="width: 20%;">กลุ่มโรงเรียน</th>
+          <th style="width: 15%;">ส่งแล้ว/ทั้งหมด</th>
+          <th style="width: 25%;">ความก้าวหน้า (%)</th>
+        </tr>
+      </thead>
+      <tbody id="report-table-body">
+      </tbody>
+    </table>
+
+    <div id="report-signature-section" style="display: none; margin-top: 50px; justify-content: space-between;">
+      <div style="text-align: center; width: 45%;">
+        <p>ลงชื่อ ........................................................... ผู้จัดทำ</p>
+        <p>( ........................................................... )</p>
+        <p>ตำแหน่ง ศึกษานิเทศก์</p>
+      </div>
+      <div style="text-align: center; width: 45%;">
+        <p>ลงชื่อ ........................................................... ผู้รับรอง</p>
+        <p>( ........................................................... )</p>
+        <p>ตำแหน่ง ผู้อำนวยการกลุ่มนิเทศฯ</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 20px; text-align: right; font-size: 12px; color: #777;">
+      ระบบนิเทศ ติดตาม และประเมินผล PISA69 | <span id="report-page-number">หน้าที่ 1</span>
+    </div>
+  </div>
+
+</body>
+
+</html>

@@ -1,0 +1,744 @@
+<script>
+  // ==========================================
+  // 1. GLOBAL VARIABLES
+  // ==========================================
+  var currentUser = {};
+  var allSchoolData = [];
+  var adminAllTasks = [];
+  var currentAdminPage = 1;
+  var rowsPerPage = 10;
+  var currentSearchQuery = "";
+  var currentClusterFilter = "";
+  var currentViewContext = "";
+  var submissionChart = null;
+
+  // ==========================================
+  // 2. AUTHENTICATION & ROUTING
+  // ==========================================
+  function handleLogin(e) {
+    e.preventDefault();
+    var btn = document.getElementById('btn-login');
+    var errorBox = document.getElementById('login-error');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>กำลังตรวจสอบ...';
+    errorBox.classList.add('d-none');
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res.status === 'SUCCESS') {
+          currentUser = res;
+          showDashboard(res);
+        } else {
+          errorBox.innerText = res.message; errorBox.classList.remove('d-none');
+          btn.disabled = false; btn.innerHTML = '<i class="bi bi-box-arrow-in-right me-2"></i>เข้าสู่ระบบ';
+          Swal.fire({ icon: 'error', title: 'เข้าสู่ระบบไม่สำเร็จ', text: res.message, confirmButtonColor: '#dc3545' });
+        }
+      })
+      .withFailureHandler(function (err) {
+        alert("System Error: " + err);
+        btn.disabled = false; btn.innerText = "เข้าสู่ระบบ";
+      })
+      .loginUser(document.getElementById('username').value, document.getElementById('password').value);
+  }
+
+  function logout() {
+    Swal.fire({
+      title: 'ต้องการออกจากระบบ?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#0d6efd',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: 'ใช่, ออกจากระบบ',
+      cancelButtonText: 'ยกเลิก'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        currentUser = {};
+        document.getElementById('username').value = ""; document.getElementById('password').value = "";
+        document.getElementById('btn-login').disabled = false; document.getElementById('btn-login').innerHTML = '<i class="bi bi-box-arrow-in-right me-2"></i>เข้าสู่ระบบ';
+        document.getElementById('dashboard-section').classList.add('d-none');
+        document.getElementById('login-section').classList.remove('d-none');
+      }
+    });
+  }
+
+  function showDashboard(user) {
+    document.getElementById('login-section').classList.add('d-none');
+    document.getElementById('dashboard-section').classList.remove('d-none');
+    document.getElementById('user-display-name').innerHTML = '<i class="bi bi-person-circle me-2"></i>' + user.full_name + ' (' + user.role + ')';
+
+    document.querySelectorAll('.role-view').forEach(function (el) { el.classList.add('d-none'); });
+
+    if (user.role === 'SCHOOL') {
+      document.getElementById('view-school').classList.remove('d-none');
+      loadSchoolTasks(user.ref_id);
+    } else if (user.role === 'SUPERVISOR') {
+      document.getElementById('view-supervisor').classList.remove('d-none');
+      currentViewContext = 'SUPERVISOR';
+      loadSupervisorDashboard(user.ref_id);
+    } else if (user.role === 'ADMIN') {
+      document.getElementById('view-admin').classList.remove('d-none');
+      currentViewContext = 'ADMIN';
+      loadAdminDashboard();
+    }
+  }
+
+  // ==========================================
+  // 3. SCHOOL LOGIC
+  // ==========================================
+  function loadSchoolTasks(schoolId) {
+    var container = document.getElementById('school-task-list');
+    container.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">กำลังโหลดข้อมูล...</p></div>';
+
+    google.script.run.withSuccessHandler(function (tasks) {
+      if (!tasks || tasks.length === 0) {
+        container.innerHTML = '<div class="alert alert-secondary text-center"><i class="bi bi-info-circle me-2"></i>ไม่มีภาระงานที่เปิดรับในขณะนี้</div>';
+        return;
+      }
+
+      var html = '<div class="table-responsive shadow-sm border rounded"><table class="table table-hover align-middle bg-white mb-0"><thead class="bg-light"><tr class="text-muted small text-uppercase"><th>ชื่องาน</th><th style="width: 25%;">รายละเอียด</th><th>รูปแบบ</th><th>กำหนดส่ง</th><th>สถานะ</th><th>ดำเนินการ</th></tr></thead><tbody>';
+
+      tasks.forEach(function (t) {
+        var statusBadge = ''; var actionBtn = '';
+        var typeIcon = t.task_type === 'LINK' ? '<span class="badge bg-light text-dark border"><i class="bi bi-link-45deg me-1"></i>ลิงก์</span>' : '<span class="badge bg-light text-dark border"><i class="bi bi-file-earmark-text me-1"></i>ไฟล์</span>';
+        var descriptionText = t.task_desc ? t.task_desc : '-';
+
+        if (!t.is_submitted) {
+          statusBadge = '<span class="badge rounded-pill bg-secondary"><i class="bi bi-circle me-1"></i>ยังไม่ส่ง</span>';
+          actionBtn = '<button class="btn btn-sm btn-primary shadow-sm" onclick="openUploadModal(\'' + t.task_id + '\', \'' + t.task_name + '\', \'' + t.task_type + '\')"><i class="bi bi-send me-1"></i>ส่งงาน</button>';
+        } else {
+          if (t.eval_result) {
+            if (t.eval_result === 'PASS') {
+              statusBadge = '<span class="badge rounded-pill bg-success"><i class="bi bi-check-circle me-1"></i>ผ่านแล้ว</span>';
+              actionBtn = '<button class="btn btn-sm btn-info text-white me-1 shadow-sm" onclick="openFeedbackModal(\'' + t.eval_result + '\', \'' + t.eval_level + '\', \'' + t.eval_feedback + '\')"><i class="bi bi-star me-1"></i>ผลประเมิน</button><a href="' + t.file_url + '" target="_blank" class="btn btn-sm btn-outline-primary shadow-sm"><i class="bi bi-eye"></i></a>';
+            } else if (t.eval_result === 'REVISE') {
+              statusBadge = '<span class="badge rounded-pill bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>แก้ไข</span>';
+              actionBtn = '<button class="btn btn-sm btn-info text-white me-1 shadow-sm" onclick="openFeedbackModal(\'' + t.eval_result + '\', \'' + t.eval_level + '\', \'' + t.eval_feedback + '\')"><i class="bi bi-chat-text me-1"></i>ดูข้อแก้ไข</button><button class="btn btn-sm btn-warning shadow-sm" onclick="openUploadModal(\'' + t.task_id + '\', \'' + t.task_name + '\', \'' + t.task_type + '\')"><i class="bi bi-arrow-repeat me-1"></i>ส่งแก้</button>';
+            } else {
+              statusBadge = '<span class="badge rounded-pill bg-danger"><i class="bi bi-x-circle me-1"></i>ไม่ผ่าน</span>';
+              actionBtn = '<button class="btn btn-sm btn-info text-white me-1 shadow-sm" onclick="openFeedbackModal(\'' + t.eval_result + '\', \'' + t.eval_level + '\', \'' + t.eval_feedback + '\')"><i class="bi bi-star me-1"></i>ผลประเมิน</button><button class="btn btn-sm btn-warning shadow-sm" onclick="openUploadModal(\'' + t.task_id + '\', \'' + t.task_name + '\', \'' + t.task_type + '\')"><i class="bi bi-arrow-repeat me-1"></i>ส่งใหม่</button>';
+            }
+          } else {
+            statusBadge = '<span class="badge rounded-pill bg-primary"><i class="bi bi-clock-history me-1"></i>รอตรวจ</span>';
+            actionBtn = '<a href="' + t.file_url + '" target="_blank" class="btn btn-sm btn-outline-primary me-1 shadow-sm"><i class="bi bi-eye me-1"></i>ดูงาน</a><button class="btn btn-sm btn-warning shadow-sm" onclick="openUploadModal(\'' + t.task_id + '\', \'' + t.task_name + '\', \'' + t.task_type + '\')"><i class="bi bi-pencil me-1"></i>แก้ไข</button>';
+          }
+        }
+        html += '<tr><td class="fw-bold text-primary">' + t.task_name + '</td><td class="text-muted small" style="min-width: 200px;">' + descriptionText + '</td><td>' + typeIcon + '</td><td><small class="text-muted"><i class="bi bi-calendar-event me-1"></i>' + t.deadline + '</small></td><td>' + statusBadge + '</td><td>' + actionBtn + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+    }).getTasksForSchool(schoolId);
+  }
+
+  function openFeedbackModal(r, l, f) {
+    if (l == 'null' || !l) l = '-'; if (f == 'null' || !f) f = '-';
+    var badge = document.getElementById('fb-result-badge');
+    var header = document.querySelector('#feedbackModal .modal-header');
+    if (r === 'PASS') { badge.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> ผ่าน</span>'; header.className = 'modal-header bg-success text-white'; }
+    else if (r === 'REVISE') { badge.innerHTML = '<span class="text-warning"><i class="bi bi-exclamation-triangle-fill"></i> แก้ไข</span>'; header.className = 'modal-header bg-warning text-dark'; }
+    else { badge.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill"></i> ไม่ผ่าน</span>'; header.className = 'modal-header bg-danger text-white'; }
+    document.getElementById('fb-level-box').innerHTML = "ระดับคุณภาพ: <strong>" + l + "</strong>";
+    document.getElementById('fb-comment').innerText = f;
+    new bootstrap.Modal(document.getElementById('feedbackModal')).show();
+  }
+
+  // ==========================================
+  // 4. UPLOAD LOGIC
+  // ==========================================
+  function openUploadModal(id, name, type) {
+    document.getElementById('modal-task-id').value = id;
+    document.getElementById('modal-task-type').value = type;
+    document.getElementById('modal-task-name').innerText = name;
+    document.getElementById('upload-progress').classList.add('d-none');
+    document.getElementById('fileInput').value = ""; document.getElementById('linkInput').value = "";
+    if (type === 'LINK') {
+      document.getElementById('input-section-file').classList.add('d-none');
+      document.getElementById('input-section-link').classList.remove('d-none');
+    } else {
+      document.getElementById('input-section-file').classList.remove('d-none');
+      document.getElementById('input-section-link').classList.add('d-none');
+      document.getElementById('fileInput').setAttribute("accept", ".pdf, .jpg, .jpeg, .png");
+    }
+    new bootstrap.Modal(document.getElementById('uploadModal')).show();
+  }
+
+  function submitFile() {
+    var id = document.getElementById('modal-task-id').value, type = document.getElementById('modal-task-type').value;
+    document.getElementById('upload-progress').classList.remove('d-none');
+    document.querySelector('#uploadModal .modal-footer').classList.add('d-none');
+
+    if (type === 'LINK') {
+      var url = document.getElementById('linkInput').value;
+      if (!url) { Swal.fire('ข้อมูลไม่ครบ', 'กรุณาวางลิงก์ก่อนส่ง', 'warning'); resetModalBtn(); return; }
+      runSubmit({ type: 'LINK', url: url, taskId: id, schoolId: currentUser.ref_id }, 'handleLinkSubmission');
+    } else {
+      var f = document.getElementById('fileInput').files[0];
+      if (!f) { Swal.fire('ข้อมูลไม่ครบ', 'กรุณาเลือกไฟล์เอกสาร', 'warning'); resetModalBtn(); return; }
+      var r = new FileReader();
+      r.onload = function (e) { runSubmit({ type: 'FILE', base64: e.target.result.split(',')[1], mimeType: f.type, fileName: f.name, taskId: id, schoolId: currentUser.ref_id }, 'handleFileUpload'); };
+      r.readAsDataURL(f);
+    }
+  }
+
+  function runSubmit(p, f) {
+    google.script.run.withSuccessHandler(afterSubmit).withFailureHandler(function (e) {
+      Swal.fire('เกิดข้อผิดพลาด', e.message, 'error'); resetModalBtn();
+    })[f](p);
+  }
+
+  function afterSubmit(res) {
+    Swal.fire({ icon: 'success', title: 'สำเร็จ!', text: res.message, timer: 2000, showConfirmButton: false });
+    bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
+    resetModalBtn();
+    loadSchoolTasks(currentUser.ref_id);
+  }
+
+  function resetModalBtn() {
+    document.querySelector('#uploadModal .modal-footer').classList.remove('d-none');
+    document.getElementById('upload-progress').classList.add('d-none');
+  }
+
+  // ==========================================
+  // 5. SUPERVISOR LOGIC
+  // ==========================================
+  function loadSupervisorDashboard(svId) {
+    var container = document.getElementById('supervisor-school-list');
+    container.innerHTML = '<div class="text-center w-100"><div class="spinner-border text-success"></div><br>กำลังโหลดข้อมูล...</div>';
+    google.script.run.withSuccessHandler(function (schools) {
+      if (schools.length === 0) { container.innerHTML = '<div class="alert alert-warning w-100">ไม่พบข้อมูลโรงเรียนในสังกัด</div>'; return; }
+      var html = '';
+      schools.forEach(function (s) {
+        html += '<div class="col-md-4"><div class="card shadow-sm h-100 border-0" onclick="openGrading(\'' + s.school_id + '\', \'' + s.school_name + '\')" style="cursor:pointer; transition: transform 0.2s;"><div class="card-body border-start border-4 border-success p-3 hover-shadow"><h6 class="fw-bold mb-1 text-dark">' + s.school_name + '</h6><small class="text-muted"><i class="bi bi-geo-alt-fill me-1"></i>' + s.cluster + '</small><div class="mt-2"><span class="badge bg-secondary rounded-pill">ส่งแล้ว ' + s.submitted_count + ' งาน</span></div></div></div></div>';
+      });
+      container.innerHTML = html;
+    }).getSupervisorSchools(svId);
+  }
+
+  function openGrading(sid, sname) {
+    document.getElementById('supervisor-school-list-area').classList.add('d-none');
+    document.getElementById('supervisor-grading-area').classList.remove('d-none');
+    document.getElementById('grading-school-name').innerText = sname;
+    document.getElementById('admin-current-view-school-id').value = sid;
+    var list = document.getElementById('grading-task-list');
+    list.innerHTML = '<div class="p-5 text-center"><div class="spinner-border text-success"></div></div>';
+    loadWorkListToContainer(sid, list);
+  }
+
+  function closeGrading() {
+    document.getElementById('supervisor-grading-area').classList.add('d-none');
+    document.getElementById('supervisor-school-list-area').classList.remove('d-none');
+  }
+
+  function loadWorkListToContainer(sid, containerElement) {
+    google.script.run.withSuccessHandler(function (works) {
+      if (works.length === 0) { containerElement.innerHTML = '<div class="p-4 text-center text-muted"><i class="bi bi-inbox fs-1 d-block mb-2"></i>โรงเรียนนี้ยังไม่มีรายการภาระงาน</div>'; return; }
+      var html = '';
+      works.forEach(function (w) {
+        var statusBadge = '';
+        if (w.submission) {
+          if (w.evaluation) {
+            if (w.evaluation.result === 'PASS') statusBadge = '<span class="badge rounded-pill bg-success"><i class="bi bi-check-circle me-1"></i>ผ่านแล้ว</span>';
+            else if (w.evaluation.result === 'REVISE') statusBadge = '<span class="badge rounded-pill bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>แก้ไข</span>';
+            else statusBadge = '<span class="badge rounded-pill bg-danger"><i class="bi bi-x-circle me-1"></i>ไม่ผ่าน</span>';
+          } else {
+            statusBadge = '<span class="badge rounded-pill bg-success"><i class="bi bi-send-check me-1"></i>ส่งแล้ว</span>';
+          }
+        } else {
+          statusBadge = '<span class="badge rounded-pill bg-secondary"><i class="bi bi-dash-circle me-1"></i>ยังไม่ส่ง</span>';
+        }
+
+        var btnGroup = '';
+        if (w.submission) {
+          btnGroup += '<a href="' + w.submission.file_url + '" target="_blank" class="btn btn-sm btn-outline-primary me-2 shadow-sm"><i class="bi bi-folder2-open me-1"></i> เปิดไฟล์</a>';
+          btnGroup += '<button class="btn btn-sm btn-success shadow-sm" onclick="openEvalModal(\'' + w.submission.id + '\')"><i class="bi bi-check2-square me-1"></i> ประเมิน</button>';
+        } else {
+          btnGroup = '<span class="text-muted small"><i class="bi bi-hourglass-split"></i> รอการส่ง...</span>';
+        }
+
+        var feedbackHtml = '';
+        if (w.evaluation && w.evaluation.feedback) {
+          feedbackHtml = '<div class="mt-2 p-2 bg-light rounded text-muted small border-start border-3 border-warning"><i class="bi bi-chat-dots-fill text-warning me-2"></i><strong>ข้อเสนอแนะ:</strong> ' + w.evaluation.feedback + '</div>';
+        }
+
+        html += '<div class="list-group-item py-3">';
+        html += '  <div class="d-flex justify-content-between align-items-start">';
+        html += '    <div class="me-3 w-75">';
+        html += '      <div class="fw-bold mb-1 text-dark">' + w.task_name + '</div>';
+        html += '      <div class="mb-1">' + statusBadge + '</div>';
+        html += feedbackHtml;
+        html += '    </div>';
+        html += '    <div class="d-flex align-items-center" style="min-width: 200px; justify-content: flex-end;">' + btnGroup + '</div>';
+        html += '  </div>';
+        html += '</div>';
+      });
+      containerElement.innerHTML = html;
+    }).getSchoolWorksForGrading(sid);
+  }
+
+  function openEvalModal(sid) {
+    document.getElementById('eval-sub-id').value = sid;
+    document.getElementById('eval-feedback').value = '';
+    new bootstrap.Modal(document.getElementById('evalModal')).show();
+  }
+
+  function submitEvaluation() {
+    var payload = {
+      submission_id: document.getElementById('eval-sub-id').value,
+      supervisor_id: currentUser.ref_id,
+      result: document.querySelector('input[name="evalResultOptions"]:checked').value,
+      level: document.getElementById('eval-level').value,
+      feedback: document.getElementById('eval-feedback').value
+    };
+    google.script.run.withSuccessHandler(function () {
+      Swal.fire({ icon: 'success', title: 'บันทึกผลการประเมินแล้ว', timer: 1500, showConfirmButton: false });
+      bootstrap.Modal.getInstance(document.getElementById('evalModal')).hide();
+      var sid = document.getElementById('admin-current-view-school-id').value;
+      if (currentViewContext === 'ADMIN') { loadWorkListToContainer(sid, document.getElementById('admin-school-work-list')); }
+      else { loadWorkListToContainer(sid, document.getElementById('grading-task-list')); }
+    }).saveEvaluation(payload);
+  }
+
+  // ==========================================
+  // 6. ADMIN DASHBOARD
+  // ==========================================
+  function loadAdminDashboard() {
+    var taskContainer = document.getElementById('admin-task-list');
+    taskContainer.innerHTML = '<div class="p-3 text-center"><div class="spinner-border text-danger"></div><div class="mt-2 text-muted">กำลังโหลดรายการภาระงาน...</div></div>';
+
+    google.script.run
+      .withSuccessHandler(function (tasks) {
+        console.log("Tasks loaded:", tasks);
+        adminAllTasks = tasks;
+
+        if (!tasks || tasks.length === 0) {
+          taskContainer.innerHTML = '<div class="alert alert-secondary m-3">ไม่พบภาระงานในระบบ</div>';
+          return;
+        }
+
+        var html = '';
+        tasks.forEach(function (t) {
+          var st = t.status === 'OPEN' ? '<span class="text-success fw-bold"><i class="bi bi-toggle-on me-1"></i>เปิด</span>' : '<span class="text-secondary fw-bold"><i class="bi bi-toggle-off me-1"></i>ปิด</span>';
+          var fl = t.folder_id ? '<a href="https://drive.google.com/drive/folders/' + t.folder_id + '" target="_blank" class="ms-2 text-decoration-none"><i class="bi bi-folder-fill text-warning"></i> Drive</a>' : '';
+
+          html += '<div class="list-group-item d-flex justify-content-between align-items-center">';
+          html += '  <div>';
+          html += '    <strong class="text-dark">' + t.task_name + '</strong> <span class="badge bg-light text-dark border ms-1">' + t.task_id + '</span>';
+          html += '    <br><small class="text-muted"><i class="bi bi-calendar3 me-1"></i>ปิดรับ: ' + t.close_date + '</small>' + fl;
+          html += '  </div>';
+          html += '  <div class="d-flex align-items-center gap-2">';
+          html += '    ' + st;
+          html += '    <button class="btn btn-sm btn-outline-warning ms-3 shadow-sm" onclick="openEditTaskModal(\'' + t.task_id + '\')"><i class="bi bi-pencil-square"></i> แก้ไข</button>';
+          html += '    <button class="btn btn-sm btn-outline-secondary shadow-sm" onclick="toggleStatus(\'' + t.task_id + '\',\'' + t.status + '\')">เปลี่ยนสถานะ</button>';
+          html += '  </div>';
+          html += '</div>';
+        });
+        taskContainer.innerHTML = html;
+      })
+      .withFailureHandler(function (err) {
+        taskContainer.innerHTML = '<div class="alert alert-danger m-3"><i class="bi bi-exclamation-triangle me-2"></i>โหลดข้อมูลไม่สำเร็จ: ' + err + '</div>';
+      })
+      .getAllTasksAdmin();
+
+    var progressTable = document.getElementById('admin-progress-table');
+    progressTable.innerHTML = '<tr><td colspan="6" class="text-center py-5"><div class="spinner-border text-primary"></div><br>กำลังประมวลผลข้อมูล...</td></tr>';
+
+    google.script.run.withSuccessHandler(function (stats) {
+      if (!stats) return;
+      document.getElementById('stat-total-schools').innerText = stats.totalSchools;
+      document.getElementById('stat-active-tasks').innerText = stats.totalActiveTasks;
+      document.getElementById('stat-complete-schools').innerText = stats.schoolProgress.filter(s => s.percent === 100).length;
+      allSchoolData = stats.schoolProgress;
+
+      var totalTasksGlobal = stats.totalActiveTasks * stats.totalSchools;
+      var totalSubmittedGlobal = 0;
+      if (stats.schoolProgress.length > 0) {
+        totalSubmittedGlobal = stats.schoolProgress.reduce(function (sum, school) {
+          return sum + school.submitted;
+        }, 0);
+      }
+      renderAdminChart(totalSubmittedGlobal, totalTasksGlobal);
+
+      populateClusterFilter(allSchoolData);
+      currentAdminPage = 1; renderTable();
+    }).getAdminStats();
+  }
+
+  function renderAdminChart(submitted, total) {
+    var ctx = document.getElementById('submissionChart').getContext('2d');
+    var notSubmitted = total - submitted;
+
+    if (submissionChart) { submissionChart.destroy(); }
+    if (total === 0) { total = 1; notSubmitted = 1; submitted = 0; }
+
+    submissionChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['ส่งแล้ว', 'ยังไม่ส่ง'],
+        datasets: [{
+          data: [submitted, notSubmitted],
+          backgroundColor: ['#198754', '#e9ecef'],
+          borderWidth: 0,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' },
+          title: {
+            display: true,
+            text: 'คิดเป็น ' + Math.round((submitted / total) * 100) + '% ของภาระงานทั้งหมด',
+            font: { family: "'Sarabun', sans-serif", size: 14 }
+          },
+          tooltip: {
+            callbacks: {
+              label: function (context) {
+                let label = context.label || '';
+                if (label) { label += ': '; }
+                let value = context.raw;
+                let percentage = Math.round((value / total) * 100) + '%';
+                return label + value + ' งาน (' + percentage + ')';
+              }
+            }
+          }
+        },
+        cutout: '65%',
+      }
+    });
+  }
+
+  function populateClusterFilter(data) {
+    var select = document.getElementById('clusterFilter');
+    var clusters = [...new Set(data.map(i => i.cluster))].sort();
+    var old = select.value;
+    select.innerHTML = '<option value="">🏠 ทุกกลุ่มโรงเรียน</option>';
+    clusters.forEach(c => { if (c) { var o = document.createElement('option'); o.value = c; o.text = c; select.appendChild(o); } });
+    if (clusters.includes(old)) select.value = old;
+  }
+
+  function renderTable() {
+    var tbody = document.getElementById('admin-progress-table');
+    var filtered = allSchoolData.filter(i => {
+      var term = currentSearchQuery.toLowerCase();
+      var matchS = i.school_name.toLowerCase().includes(term) || i.cluster.toLowerCase().includes(term);
+      var matchC = (currentClusterFilter === "") || (i.cluster === currentClusterFilter);
+      return matchS && matchC;
+    });
+    var total = filtered.length; var pages = Math.ceil(total / rowsPerPage) || 1;
+    if (currentAdminPage > pages) currentAdminPage = pages; if (currentAdminPage < 1) currentAdminPage = 1;
+    var start = (currentAdminPage - 1) * rowsPerPage; var end = start + rowsPerPage;
+    var pageData = filtered.slice(start, end);
+    document.getElementById('page-info').innerText = "แสดง " + (total === 0 ? 0 : start + 1) + "-" + (end > total ? total : end) + " จาก " + total;
+
+    var html = '';
+    if (total === 0) html = '<tr><td colspan="6" class="text-center text-muted py-4"><i class="bi bi-search fs-1 d-block mb-2"></i>ไม่พบข้อมูลที่ค้นหา</td></tr>';
+    else {
+      pageData.forEach((s, idx) => {
+        var c = s.percent >= 100 ? 'bg-success' : (s.percent >= 80 ? 'bg-info' : (s.percent >= 50 ? 'bg-warning' : 'bg-danger'));
+        html += '<tr><td class="text-muted text-center">' + (start + idx + 1) + '</td><td class="fw-bold text-dark">' + s.school_name + '</td><td class="text-center"><span class="badge bg-light text-dark border">' + s.cluster + '</span></td><td class="text-center fw-bold">' + s.submitted + ' / ' + s.total + '</td><td><div class="progress shadow-sm" style="height:20px"><div class="progress-bar ' + c + '" style="width:' + s.percent + '%">' + s.percent + '%</div></div></td><td class="text-center"><button class="btn btn-sm btn-outline-primary shadow-sm" onclick="openAdminSchoolView(\'' + s.school_id + '\',\'' + s.school_name + '\')"><i class="bi bi-eye-fill"></i> ดูงาน</button></td></tr>';
+      });
+    }
+    tbody.innerHTML = html;
+    renderPaginationControls(pages);
+  }
+
+  function renderPaginationControls(pages) {
+    var nav = document.getElementById('pagination-controls');
+    var html = '';
+    var prev = currentAdminPage === 1 ? 'disabled' : '';
+    html += '<li class="page-item ' + prev + '"><a class="page-link" href="javascript:void(0)" onclick="changePage(' + (currentAdminPage - 1) + ')"><i class="bi bi-chevron-left"></i></a></li>';
+    for (var i = 1; i <= pages; i++) {
+      if (pages > 7) { if (i === 1 || i === pages || (i >= currentAdminPage - 1 && i <= currentAdminPage + 1)) { var act = i === currentAdminPage ? 'active' : ''; html += '<li class="page-item ' + act + '"><a class="page-link" href="javascript:void(0)" onclick="changePage(' + i + ')">' + i + '</a></li>'; } else if (i === currentAdminPage - 2 || i === currentAdminPage + 2) html += '<li class="page-item disabled"><span class="page-link">...</span></li>'; }
+      else { var act = i === currentAdminPage ? 'active' : ''; html += '<li class="page-item ' + act + '"><a class="page-link" href="javascript:void(0)" onclick="changePage(' + i + ')">' + i + '</a></li>'; }
+    }
+    var next = currentAdminPage === pages ? 'disabled' : '';
+    html += '<li class="page-item ' + next + '"><a class="page-link" href="javascript:void(0)" onclick="changePage(' + (currentAdminPage + 1) + ')"><i class="bi bi-chevron-right"></i></a></li>';
+    nav.innerHTML = html;
+  }
+
+  function handleFilter() { currentSearchQuery = document.getElementById('searchInput').value; currentClusterFilter = document.getElementById('clusterFilter').value; currentAdminPage = 1; renderTable(); }
+  function changeRowsPerPage() { rowsPerPage = parseInt(document.getElementById('rowsPerPage').value); currentAdminPage = 1; renderTable(); }
+  function changePage(p) { currentAdminPage = p; renderTable(); }
+
+  // --- Admin Modal (View School) ---
+  function openAdminSchoolView(sid, sname) {
+    document.getElementById('adminViewSchoolTitle').innerText = "📄 งานของ: " + sname;
+    document.getElementById('admin-current-view-school-id').value = sid;
+    var container = document.getElementById('admin-school-work-list');
+    container.innerHTML = '<div class="p-5 text-center"><div class="spinner-border text-primary"></div></div>';
+    new bootstrap.Modal(document.getElementById('adminViewSchoolModal')).show();
+    loadWorkListToContainer(sid, container);
+  }
+
+  // --- Task Create ---
+  function openCreateTaskModal() {
+    document.getElementById('createTaskForm').reset();
+    document.getElementById('new-open-date').valueAsDate = new Date();
+    var nextRound = "1/2569";
+    var defaultYear = "2569";
+    if (adminAllTasks && adminAllTasks.length > 0) {
+      var latestTask = adminAllTasks[0];
+      var lastRoundStr = String(latestTask.round || "");
+      if (lastRoundStr.includes("/")) {
+        var parts = lastRoundStr.split("/");
+        var num = parseInt(parts[0]);
+        var year = parts[1];
+        if (!isNaN(num)) {
+          nextRound = (num + 1) + "/" + year;
+          defaultYear = year;
+        }
+      }
+    }
+    document.getElementById('new-task-round').value = nextRound;
+    document.getElementById('new-fiscal-year').value = defaultYear;
+    new bootstrap.Modal(document.getElementById('createTaskModal')).show();
+  }
+
+  function submitNewTask() {
+    var btn = document.querySelector('#createTaskModal .btn-danger'); btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>กำลังบันทึก...';
+    var p = { taskName: document.getElementById('new-task-name').value, taskType: document.getElementById('new-task-type').value, fiscalYear: document.getElementById('new-fiscal-year').value, description: document.getElementById('new-task-desc').value, openDate: document.getElementById('new-open-date').value, closeDate: document.getElementById('new-close-date').value, round: document.getElementById('new-task-round').value };
+    if (!p.taskName) { Swal.fire('ข้อมูลไม่ครบ', 'กรุณาระบุชื่องาน', 'warning'); btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-2"></i>บันทึกข้อมูล'; return; }
+    google.script.run.withSuccessHandler(function (r) {
+      Swal.fire({ icon: 'success', title: 'สร้างงานสำเร็จ', text: r.message });
+      bootstrap.Modal.getInstance(document.getElementById('createTaskModal')).hide();
+      loadAdminDashboard();
+      btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-2"></i>บันทึกข้อมูล';
+    }).createNewTask(p);
+  }
+  function toggleStatus(id, st) {
+    Swal.fire({
+      title: 'เปลี่ยนสถานะงาน?',
+      text: "คุณต้องการเปลี่ยนสถานะการเปิดรับงานนี้หรือไม่",
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'ใช่, เปลี่ยนเลย'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        google.script.run.withSuccessHandler(function () { loadAdminDashboard(); }).toggleTaskStatus(id, st);
+      }
+    });
+  }
+
+  // ==========================================
+  // EDIT TASK LOGIC
+  // ==========================================
+  function openEditTaskModal(taskId) {
+    var task = adminAllTasks.find(t => t.task_id === taskId);
+    if (!task) return;
+
+    function convertDateToInput(dateStr) {
+      if (!dateStr || dateStr === '-') return '';
+      var parts = dateStr.split('/');
+      if (parts.length === 3) {
+        var y = parseInt(parts[2]);
+        var year = (y > 2400) ? y - 543 : y;
+        var month = parts[1].padStart(2, '0');
+        var day = parts[0].padStart(2, '0');
+        return year + '-' + month + '-' + day;
+      }
+      return '';
+    }
+
+    document.getElementById('edit-task-id').value = task.task_id;
+    document.getElementById('display-task-id').value = task.task_id;
+    document.getElementById('edit-task-name').value = task.task_name;
+    document.getElementById('edit-task-type').value = task.task_type;
+    document.getElementById('edit-task-desc').value = task.description || '';
+    document.getElementById('edit-fiscal-year').value = task.fiscal_year || '2569';
+    document.getElementById('edit-task-round').value = task.round || '';
+    document.getElementById('edit-open-date').value = convertDateToInput(task.open_date);
+    document.getElementById('edit-close-date').value = convertDateToInput(task.close_date);
+
+    new bootstrap.Modal(document.getElementById('editTaskModal')).show();
+  }
+
+  function submitEditTask() {
+    var btn = document.querySelector('#editTaskModal .btn-warning');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>กำลังบันทึก...';
+
+    var payload = {
+      taskId: document.getElementById('edit-task-id').value,
+      taskName: document.getElementById('edit-task-name').value,
+      taskType: document.getElementById('edit-task-type').value,
+      fiscalYear: document.getElementById('edit-fiscal-year').value,
+      description: document.getElementById('edit-task-desc').value,
+      openDate: document.getElementById('edit-open-date').value,
+      closeDate: document.getElementById('edit-close-date').value,
+      round: document.getElementById('edit-task-round').value
+    };
+
+    google.script.run.withSuccessHandler(function (res) {
+      if (res.status === 'SUCCESS') {
+        Swal.fire({ icon: 'success', title: 'แก้ไขสำเร็จ', text: res.message, timer: 1500, showConfirmButton: false });
+        bootstrap.Modal.getInstance(document.getElementById('editTaskModal')).hide();
+        loadAdminDashboard();
+      } else {
+        Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
+      }
+      btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-2"></i>บันทึกการแก้ไข';
+    }).updateTask(payload);
+  }
+
+  function confirmDeleteTask() {
+    var taskId = document.getElementById('edit-task-id').value;
+    var taskName = document.getElementById('edit-task-name').value;
+
+    Swal.fire({
+      title: 'ยืนยันการลบ?',
+      html: "คุณต้องการลบภาระงาน <strong>" + taskName + "</strong> ใช่หรือไม่?<br><small class='text-danger'>*หากลบแล้ว ข้อมูลการส่งงานของโรงเรียนอาจได้รับผลกระทบ</small>",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc3545',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: 'ใช่, ลบเลย',
+      cancelButtonText: 'ยกเลิก'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        Swal.fire({
+          title: 'กำลังลบข้อมูล...',
+          allowOutsideClick: false,
+          didOpen: () => { Swal.showLoading(); }
+        });
+
+        google.script.run.withSuccessHandler(function (res) {
+          if (res.status === 'SUCCESS') {
+            Swal.fire({ icon: 'success', title: 'ลบสำเร็จ', text: res.message, timer: 1500, showConfirmButton: false });
+            bootstrap.Modal.getInstance(document.getElementById('editTaskModal')).hide();
+            loadAdminDashboard();
+          } else {
+            Swal.fire('เกิดข้อผิดพลาด', res.message, 'error');
+          }
+        }).deleteTask(taskId);
+      }
+    });
+  }
+
+  // ==========================================
+  // [NEW] Export CSV & PDF (Paginated)
+  // ==========================================
+  function exportToCSV() {
+    if (!allSchoolData || allSchoolData.length === 0) {
+      Swal.fire('ไม่มีข้อมูล', 'ยังไม่มีข้อมูลโรงเรียนสำหรับการส่งออก', 'warning');
+      return;
+    }
+
+    var csvContent = "School ID,School Name,Cluster,Submitted Tasks,Total Tasks,Progress (%)\n";
+
+    allSchoolData.forEach(function (row) {
+      var line = [
+        '"' + row.school_id + '"',
+        '"' + row.school_name + '"',
+        '"' + row.cluster + '"',
+        row.submitted,
+        row.total,
+        row.percent
+      ].join(",");
+      csvContent += line + "\n";
+    });
+
+    var blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "report_progress_" + new Date().toISOString().slice(0, 10) + ".csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  async function exportToPDF_Script() {
+    if (!allSchoolData || allSchoolData.length === 0) {
+      Swal.fire('ไม่มีข้อมูล', 'ยังไม่มีข้อมูลโรงเรียนสำหรับการออกรายงาน', 'warning');
+      return;
+    }
+
+    Swal.fire({
+      title: 'กำลังสร้างรายงาน PDF...',
+      html: 'กำลังจัดหน้าและประมวลผลข้อมูล...',
+      allowOutsideClick: false,
+      didOpen: () => { Swal.showLoading(); }
+    });
+
+    try {
+      // 1. เตรียมข้อมูลพื้นฐาน
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const element = document.getElementById("pdf-report-template");
+
+      // อัปเดตข้อมูล Header
+      var now = new Date();
+      var dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      document.getElementById('report-date-print').innerText = dateStr;
+      document.getElementById('report-user-print').innerText = currentUser.full_name || 'Admin';
+
+      // อัปเดต Summary (ใช้เฉพาะหน้าแรก)
+      document.getElementById('rep-total-school').innerText = document.getElementById('stat-total-schools').innerText;
+      document.getElementById('rep-total-task').innerText = document.getElementById('stat-active-tasks').innerText;
+      document.getElementById('rep-complete').innerText = document.getElementById('stat-complete-schools').innerText;
+
+      // 2. คำนวณการแบ่งหน้า
+      const rowsPerPage = 25;
+      const totalRows = allSchoolData.length;
+      const totalPages = Math.ceil(totalRows / rowsPerPage);
+
+      // 3. วนลูปสร้างทีละหน้า
+      for (let i = 0; i < totalPages; i++) {
+        const start = i * rowsPerPage;
+        const end = start + rowsPerPage;
+        const pageData = allSchoolData.slice(start, end);
+
+        var tbody = document.getElementById('report-table-body');
+        tbody.innerHTML = '';
+        pageData.forEach(function (row, index) {
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td style="text-align: center;">' + (start + index + 1) + '</td>' +
+            '<td>' + row.school_name + '</td>' +
+            '<td style="text-align: center;">' + row.cluster + '</td>' +
+            '<td style="text-align: center;">' + row.submitted + ' / ' + row.total + '</td>' +
+            '<td style="text-align: center;">' + row.percent + '%</td>';
+          tbody.appendChild(tr);
+        });
+
+        // จัดการการแสดงผลหน้าแรก vs หน้าถัดไป
+        if (i === 0) {
+          document.getElementById('report-summary-section').style.display = 'flex';
+        } else {
+          document.getElementById('report-summary-section').style.display = 'none';
+        }
+
+        // *** ตรวจสอบว่าเป็นหน้าสุดท้ายหรือไม่ เพื่อแสดง Signature ***
+        if (i === totalPages - 1) {
+          document.getElementById('report-signature-section').style.display = 'flex';
+          // ไม่ต้องใส่ชื่อคนล็อกอินแล้ว เพราะใช้เส้นประตามที่ขอ
+        } else {
+          document.getElementById('report-signature-section').style.display = 'none';
+        }
+
+        document.getElementById('report-page-number').innerText = 'หน้าที่ ' + (i + 1) + ' / ' + totalPages;
+
+        await new Promise(r => setTimeout(r, 100));
+        const canvas = await html2canvas(element, { scale: 2, useCORS: true, logging: false });
+        const imgData = canvas.toDataURL('image/png');
+
+        const imgWidth = 210;
+        const pageHeight = 297;
+        const imgHeight = canvas.height * imgWidth / canvas.width;
+
+        if (i > 0) pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+      }
+
+      const fileName = 'PISA_Report_' + new Date().toISOString().slice(0, 10) + '.pdf';
+      pdf.save(fileName);
+
+      Swal.close();
+      Swal.fire({ icon: 'success', title: 'ดาวน์โหลดสำเร็จ', showConfirmButton: false, timer: 1500 });
+
+    } catch (err) {
+      console.error(err);
+      Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถสร้าง PDF ได้: ' + err.message, 'error');
+    }
+  }
+</script>
